@@ -262,7 +262,7 @@ local function ReloadDictionary()
 
     task.spawn(function()
         local urls = {
-            "https://raw.githubusercontent.com/amazingtriton-ui/Test/refs/heads/main/Uvulopalatopharyngoplasty.lua",
+            "https://raw.githubusercontent.com/bhumirakhman-sudo/Smth/refs/heads/main/duplicate-lines-result%20(4).txt",
         }
 
         local loadedCount = 0
