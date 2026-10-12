@@ -694,63 +694,56 @@ AutoBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ============================================================
--- NEW: Key tracker (throttled so it doesn't freeze the game)
+-- GetGameLetters: reads the required letter from the game UI
+-- UUID segments grabbed by index (they change every session)
 -- ============================================================
-local tracked = {}
-local combined = ""
-local scannedOnce = false
-
-local function readKey(obj)
-    local key = obj:FindFirstChild("Key")
-    if not key then return nil end
-    local txt = key:FindFirstChild("text")
-    if txt and typeof(txt) == "string" then return txt end
-    -- some setups use a StringValue named "text"
-    if txt and txt:IsA("StringValue") then return txt.Value end
-    return nil
-end
-
-local function rebuildCombined()
-    local parts = {}
-    for obj in pairs(tracked) do
-        if obj.Parent then
-            parts[#parts + 1] = tostring(tracked[obj] or "")
-        end
-    end
-    combined = table.concat(parts)
-end
-
 local function GetGameLetters()
-    local screenGui = Players.LocalPlayer.PlayerGui:FindFirstChild("ScreenGui")
-    if not screenGui then return combined end
+    local combinedLetters = ""
+    pcall(function()
+        local screenGui = Players.LocalPlayer.PlayerGui:FindFirstChild("ScreenGui")
+        if not screenGui then return end
 
-    -- Scan the tree ONCE. After that, only refresh tracked objects.
-    if not scannedOnce then
-        for _, d in ipairs(screenGui:GetDescendants()) do
-            local t = readKey(d)
-            if t ~= nil then tracked[d] = t end
-        end
-        scannedOnce = true
-        rebuildCombined()
-    end
+        local base = screenGui["2"]["2"]["2"]["2"]
+        if not base then return end
 
-    -- Prune dead refs + refresh values (cheap: only tracked objects)
-    local dirty = false
-    for obj, last in pairs(tracked) do
-        if not obj.Parent then
-            tracked[obj] = nil
-            dirty = true
+        local c2 = base:GetChildren()[2]
+        if not c2 then return end
+        local step1 = c2["1"]
+        if not step1 then return end
+
+        -- UUID segments: grab by index since names change every session
+        local uuid1 = step1:GetChildren()[1]
+        if not uuid1 then return end
+        local uuid2 = uuid1:GetChildren()[1]
+        if not uuid2 then return end
+
+        local target = uuid2["1"]["4"]["2"][".1"][".2"]["4"][".1"]
+        if not target then return end
+
+        local child3 = target:GetChildren()[3]
+        if not child3 then return end
+
+        local keyObj = child3.Key
+        if not keyObj then return end
+
+        local letterHolder = keyObj:FindFirstChild("Letter")
+        if not letterHolder then return end
+
+        local leaf = letterHolder:FindFirstChild("2")
+        if not leaf then return end
+
+        if leaf:IsA("TextLabel") or leaf:IsA("TextButton") then
+            combinedLetters = leaf.Text
+        elseif leaf:IsA("StringValue") then
+            combinedLetters = leaf.Value
         else
-            local cur = readKey(obj)
-            if cur ~= last then
-                tracked[obj] = cur
-                dirty = true
+            local ok, txt = pcall(function() return leaf.text end)
+            if ok and typeof(txt) == "string" then
+                combinedLetters = txt
             end
         end
-    end
-    if dirty then rebuildCombined() end
-
-    return combined
+    end)
+    return combinedLetters
 end
 
 task.spawn(function()
