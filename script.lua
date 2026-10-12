@@ -696,9 +696,8 @@ end)
 -- ============================================================
 -- NEW: Key tracker (throttled so it doesn't freeze the game)
 -- ============================================================
-local tracked = {}          -- [obj] = last known text
-local combined = ""         -- live combined string
-local trackerReady = false
+local tracked = {}
+local combined = ""
 
 local function readKey(obj)
     local ok, key = pcall(function() return obj.Key end)
@@ -706,17 +705,6 @@ local function readKey(obj)
     local ok2, txt = pcall(function() return key.text end)
     if not ok2 then return nil end
     return txt
-end
-
-local function scan(root)
-    for _, d in ipairs(root:GetDescendants()) do
-        if tracked[d] == nil then
-            local t = readKey(d)
-            if t ~= nil then
-                tracked[d] = t
-            end
-        end
-    end
 end
 
 local function rebuildCombined()
@@ -729,60 +717,42 @@ local function rebuildCombined()
     combined = table.concat(parts)
 end
 
-task.spawn(function()
-    local screenGui = Players.LocalPlayer.PlayerGui:WaitForChild("ScreenGui", 10)
-    if not screenGui then return end
+local function GetGameLetters()
+    local screenGui = Players.LocalPlayer.PlayerGui:FindFirstChild("ScreenGui")
+    if not screenGui then return "" end
 
-    scan(screenGui)
-    trackerReady = true
+    -- prune dead refs
+    for obj in pairs(tracked) do
+        if not obj.Parent then tracked[obj] = nil end
+    end
 
-    -- Only scan newly added descendants instead of rescanning the whole tree
-    screenGui.DescendantAdded:Connect(function(d)
+    -- pick up new ones
+    for _, d in ipairs(screenGui:GetDescendants()) do
         if tracked[d] == nil then
             local t = readKey(d)
-            if t ~= nil then
-                tracked[d] = t
-                rebuildCombined()
-            end
-        end
-    end)
-
-    screenGui.DescendantRemoving:Connect(function(d)
-        if tracked[d] then
-            tracked[d] = nil
-            rebuildCombined()
-        end
-    end)
-
-    -- Throttled poll instead of every Heartbeat (10x/sec is plenty)
-    while task.wait(0.1) do
-        local dirty = false
-        for obj, last in pairs(tracked) do
-            if not obj.Parent then
-                tracked[obj] = nil
-                dirty = true
-                continue
-            end
-            local cur = readKey(obj)
-            if cur ~= last then
-                tracked[obj] = cur
-                dirty = true
-            end
-        end
-        if dirty then
-            rebuildCombined()
+            if t ~= nil then tracked[d] = t end
         end
     end
-end)
 
-_G.GetCombinedKeyText = function() return combined end
-_G.IsTrackerReady = function() return trackerReady end
+    -- refresh texts
+    local dirty = false
+    for obj, last in pairs(tracked) do
+        local cur = readKey(obj)
+        if cur ~= last then
+            tracked[obj] = cur
+            dirty = true
+        end
+    end
+    if dirty then rebuildCombined() end
+
+    return combined
+end
 -- ============================================================
 
 task.spawn(function()
     while task.wait(0.3) do
-        if autoGetEnabled and _G.IsTrackerReady and _G.IsTrackerReady() then
-            local newLetters = _G.GetCombinedKeyText()
+        if autoGetEnabled then
+            local newLetters = GetGameLetters()
             newLetters = string.gsub(newLetters, "%s+", "") 
             
             if newLetters ~= "" and string.lower(newLetters) ~= string.lower(lastQuery) then
