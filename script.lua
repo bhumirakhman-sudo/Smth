@@ -694,10 +694,11 @@ AutoBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ============================================================
--- NEW: Key tracker (replaces old GetGameLetters hardcoded path)
+-- NEW: Key tracker (throttled so it doesn't freeze the game)
 -- ============================================================
 local tracked = {}          -- [obj] = last known text
 local combined = ""         -- live combined string
+local trackerReady = false
 
 local function readKey(obj)
     local ok, key = pcall(function() return obj.Key end)
@@ -733,9 +734,17 @@ task.spawn(function()
     if not screenGui then return end
 
     scan(screenGui)
+    trackerReady = true
 
-    screenGui.DescendantAdded:Connect(function()
-        scan(screenGui)
+    -- Only scan newly added descendants instead of rescanning the whole tree
+    screenGui.DescendantAdded:Connect(function(d)
+        if tracked[d] == nil then
+            local t = readKey(d)
+            if t ~= nil then
+                tracked[d] = t
+                rebuildCombined()
+            end
+        end
     end)
 
     screenGui.DescendantRemoving:Connect(function(d)
@@ -745,7 +754,8 @@ task.spawn(function()
         end
     end)
 
-    RunService.Heartbeat:Connect(function()
+    -- Throttled poll instead of every Heartbeat (10x/sec is plenty)
+    while task.wait(0.1) do
         local dirty = false
         for obj, last in pairs(tracked) do
             if not obj.Parent then
@@ -762,15 +772,16 @@ task.spawn(function()
         if dirty then
             rebuildCombined()
         end
-    end)
+    end
 end)
 
 _G.GetCombinedKeyText = function() return combined end
+_G.IsTrackerReady = function() return trackerReady end
 -- ============================================================
 
 task.spawn(function()
     while task.wait(0.3) do
-        if autoGetEnabled then
+        if autoGetEnabled and _G.IsTrackerReady and _G.IsTrackerReady() then
             local newLetters = _G.GetCombinedKeyText()
             newLetters = string.gsub(newLetters, "%s+", "") 
             
