@@ -698,13 +698,16 @@ end)
 -- ============================================================
 local tracked = {}
 local combined = ""
+local scannedOnce = false
 
 local function readKey(obj)
-    local ok, key = pcall(function() return obj.Key end)
-    if not ok or not key then return nil end
-    local ok2, txt = pcall(function() return key.text end)
-    if not ok2 then return nil end
-    return txt
+    local key = obj:FindFirstChild("Key")
+    if not key then return nil end
+    local txt = key:FindFirstChild("text")
+    if txt and typeof(txt) == "string" then return txt end
+    -- some setups use a StringValue named "text"
+    if txt and txt:IsA("StringValue") then return txt.Value end
+    return nil
 end
 
 local function rebuildCombined()
@@ -719,35 +722,36 @@ end
 
 local function GetGameLetters()
     local screenGui = Players.LocalPlayer.PlayerGui:FindFirstChild("ScreenGui")
-    if not screenGui then return "" end
+    if not screenGui then return combined end
 
-    -- prune dead refs
-    for obj in pairs(tracked) do
-        if not obj.Parent then tracked[obj] = nil end
-    end
-
-    -- pick up new ones
-    for _, d in ipairs(screenGui:GetDescendants()) do
-        if tracked[d] == nil then
+    -- Scan the tree ONCE. After that, only refresh tracked objects.
+    if not scannedOnce then
+        for _, d in ipairs(screenGui:GetDescendants()) do
             local t = readKey(d)
             if t ~= nil then tracked[d] = t end
         end
+        scannedOnce = true
+        rebuildCombined()
     end
 
-    -- refresh texts
+    -- Prune dead refs + refresh values (cheap: only tracked objects)
     local dirty = false
     for obj, last in pairs(tracked) do
-        local cur = readKey(obj)
-        if cur ~= last then
-            tracked[obj] = cur
+        if not obj.Parent then
+            tracked[obj] = nil
             dirty = true
+        else
+            local cur = readKey(obj)
+            if cur ~= last then
+                tracked[obj] = cur
+                dirty = true
+            end
         end
     end
     if dirty then rebuildCombined() end
 
     return combined
 end
--- ============================================================
 
 task.spawn(function()
     while task.wait(0.3) do
