@@ -694,58 +694,84 @@ AutoBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ============================================================
--- GetGameLetters: reads the required letter from the game UI
--- UUID segments grabbed by index (they change every session)
+-- Key tracker: reads every single-letter TextLabel under
+-- ScreenGui, sorts left->right, joins into a word.
+-- Throttled so it doesn't freeze the game.
 -- ============================================================
-local function GetGameLetters()
-    local combinedLetters = ""
-    pcall(function()
-        local screenGui = Players.LocalPlayer.PlayerGui:FindFirstChild("ScreenGui")
-        if not screenGui then return end
+local tracked = {}          -- [TextLabel] = last known letter
+local combined = ""
+local scannedOnce = false
 
-        local base = screenGui["2"]["2"]["2"]["2"]
-        if not base then return end
-
-        local c2 = base:GetChildren()[2]
-        if not c2 then return end
-        local step1 = c2["1"]
-        if not step1 then return end
-
-        -- UUID segments: grab by index since names change every session
-        local uuid1 = step1:GetChildren()[1]
-        if not uuid1 then return end
-        local uuid2 = uuid1:GetChildren()[1]
-        if not uuid2 then return end
-
-        local target = uuid2["1"]["4"]["2"][".1"][".2"]["4"][".1"]
-        if not target then return end
-
-        local child3 = target:GetChildren()[3]
-        if not child3 then return end
-
-        local keyObj = child3.Key
-        if not keyObj then return end
-
-        local letterHolder = keyObj:FindFirstChild("Letter")
-        if not letterHolder then return end
-
-        local leaf = letterHolder:FindFirstChild("2")
-        if not leaf then return end
-
-        if leaf:IsA("TextLabel") or leaf:IsA("TextButton") then
-            combinedLetters = leaf.Text
-        elseif leaf:IsA("StringValue") then
-            combinedLetters = leaf.Value
-        else
-            local ok, txt = pcall(function() return leaf.text end)
-            if ok and typeof(txt) == "string" then
-                combinedLetters = txt
-            end
-        end
-    end)
-    return combinedLetters
+local function isLetterLabel(inst)
+    if not inst:IsA("TextLabel") then return false end
+    local t = inst.Text
+    if type(t) ~= "string" then return false end
+    if #t ~= 1 then return false end
+    if not t:match("%a") then return false end
+    return true
 end
 
+local function rebuildCombined()
+    local live = {}
+    for obj in pairs(tracked) do
+        if obj.Parent then
+            live[#live + 1] = obj
+        end
+    end
+
+    -- left -> right, then top -> bottom as tiebreak
+    table.sort(live, function(a, b)
+        local ax, bx = a.AbsolutePosition.X, b.AbsolutePosition.X
+        if math.abs(ax - bx) > 1 then return ax < bx end
+        return a.AbsolutePosition.Y < b.AbsolutePosition.Y
+    end)
+
+    local buf = {}
+    for i = 1, #live do
+        buf[i] = live[i].Text
+    end
+    combined = table.concat(buf)
+end
+
+local function GetGameLetters()
+    local screenGui = Players.LocalPlayer.PlayerGui:FindFirstChild("ScreenGui")
+    if not screenGui then return combined end
+
+    if not scannedOnce then
+        for _, d in ipairs(screenGui:GetDescendants()) do
+            if isLetterLabel(d) then
+                tracked[d] = d.Text
+            end
+        end
+        scannedOnce = true
+        rebuildCombined()
+        return combined
+    end
+
+    -- Prune dead refs + pick up newly added letter labels + refresh text
+    local dirty = false
+    for obj, last in pairs(tracked) do
+        if not obj.Parent then
+            tracked[obj] = nil
+            dirty = true
+        elseif obj.Text ~= last then
+            tracked[obj] = obj.Text
+            dirty = true
+        end
+    end
+
+    -- rescan descendants for new labels (cheap enough at 0.3s cadence;
+    -- if it ever lags, switch to screenGui.DescendantAdded)
+    for _, d in ipairs(screenGui:GetDescendants()) do
+        if isLetterLabel(d) and tracked[d] == nil then
+            tracked[d] = d.Text
+            dirty = true
+        end
+    end
+
+    if dirty then rebuildCombined() end
+    return combined
+end
 task.spawn(function()
     while task.wait(0.3) do
         if autoGetEnabled then
