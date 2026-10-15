@@ -702,13 +702,15 @@ local tracked = {}          -- [TextLabel] = last known letter
 local combined = ""
 local scannedOnce = false
 
+local ALLOWED_EXTRA = { ["-"] = true, ["'"] = true }
+
 local function isLetterLabel(inst)
     if not inst:IsA("TextLabel") then return false end
     local t = inst.Text
     if type(t) ~= "string" then return false end
     if #t ~= 1 then return false end
-    if not t:match("%a") then return false end
-    return true
+    if t:match("%u") or ALLOWED_EXTRA[t] then return true end
+    return false
 end
 
 local function rebuildCombined()
