@@ -772,6 +772,7 @@ local function GetGameLetters()
     if dirty then rebuildCombined() end
     return combined
 end
+    
 task.spawn(function()
     while task.wait(0.3) do
         if autoGetEnabled then
