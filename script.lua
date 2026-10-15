@@ -693,35 +693,35 @@ AutoBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- ============================================================
--- Key tracker: reads every single-letter TextLabel under
--- ScreenGui, sorts left->right, joins into a word.
--- Throttled so it doesn't freeze the game.
--- ============================================================
-local tracked = {}          -- [TextLabel] = last known letter
 local combined = ""
-local scannedOnce = false
-
-local ALLOWED_EXTRA = { ["-"] = true, ["'"] = true }
 
 local function isLetterLabel(inst)
     if not inst:IsA("TextLabel") then return false end
+    if not inst.Visible then return false end
+    -- skip labels inside a hidden ancestor
+    local p = inst.Parent
+    while p and p ~= game do
+        if p:IsA("GuiObject") and not p.Visible then return false end
+        p = p.Parent
+    end
     local t = inst.Text
     if type(t) ~= "string" then return false end
     if #t ~= 1 then return false end
-    if t:match("%u") or ALLOWED_EXTRA[t] then return true end
+    if t:match("%u") or t == "-" or t == "'" then return true end
     return false
 end
 
-local function rebuildCombined()
+local function GetGameLetters()
+    local screenGui = Players.LocalPlayer.PlayerGui:FindFirstChild("ScreenGui")
+    if not screenGui then return combined end
+
     local live = {}
-    for obj in pairs(tracked) do
-        if obj.Parent then
-            live[#live + 1] = obj
+    for _, d in ipairs(screenGui:GetDescendants()) do
+        if isLetterLabel(d) then
+            live[#live + 1] = d
         end
     end
 
-    -- left -> right, then top -> bottom as tiebreak
     table.sort(live, function(a, b)
         local ax, bx = a.AbsolutePosition.X, b.AbsolutePosition.X
         if math.abs(ax - bx) > 1 then return ax < bx end
@@ -734,45 +734,6 @@ local function rebuildCombined()
     end
     combined = table.concat(buf)
     combined = combined:gsub("^[%-']+", ""):gsub("[%-']+$", "")
-end
-
-local function GetGameLetters()
-    local screenGui = Players.LocalPlayer.PlayerGui:FindFirstChild("ScreenGui")
-    if not screenGui then return combined end
-
-    if not scannedOnce then
-        for _, d in ipairs(screenGui:GetDescendants()) do
-            if isLetterLabel(d) then
-                tracked[d] = d.Text
-            end
-        end
-        scannedOnce = true
-        rebuildCombined()
-        return combined
-    end
-
-    -- Prune dead refs + pick up newly added letter labels + refresh text
-    local dirty = false
-    for obj, last in pairs(tracked) do
-        if not obj.Parent then
-            tracked[obj] = nil
-            dirty = true
-        elseif obj.Text ~= last then
-            tracked[obj] = obj.Text
-            dirty = true
-        end
-    end
-
-    -- rescan descendants for new labels (cheap enough at 0.3s cadence;
-    -- if it ever lags, switch to screenGui.DescendantAdded)
-    for _, d in ipairs(screenGui:GetDescendants()) do
-        if isLetterLabel(d) and tracked[d] == nil then
-            tracked[d] = d.Text
-            dirty = true
-        end
-    end
-
-    if dirty then rebuildCombined() end
     return combined
 end
     
