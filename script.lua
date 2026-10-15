@@ -733,6 +733,7 @@ local function rebuildCombined()
         buf[i] = live[i].Text
     end
     combined = table.concat(buf)
+    combined = combined:gsub("^[%-']+", ""):gsub("[%-']+$", "")
 end
 
 local function GetGameLetters()
